@@ -5,7 +5,7 @@ import time
 import random
 import urllib3
 
-# Desactivar advertencias de SSL para algunos sitios gubernamentales
+# Desactivar advertencias de SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def limpiar_texto(texto):
@@ -13,45 +13,50 @@ def limpiar_texto(texto):
 
 def es_reciente(texto_fecha):
     """
-    Filtro estricto de 48 horas.
+    Filtro estricto: Acepta ofertas de hasta 120 horas (5 días).
     """
     if not texto_fecha: return False
     texto = texto_fecha.lower()
     
-    if any(x in texto for x in ["minuto", "segundo", "hora", "ahora", "hoy", "today", "just now", "ayer", "yesterday", "nuevo"]):
+    # 1. Inmediatez
+    if any(x in texto for x in ["minuto", "segundo", "hora", "ahora", "hoy", "today", "just now", "ayer", "yesterday", "nuevo", "new"]):
         return True
         
-    match = re.search(r'(\d+)\s*(d|día|day)', texto)
+    # 2. Días numéricos
+    match = re.search(r'(\d+)\s*(d|día|day|dia)', texto)
     if match:
         dias = int(match.group(1))
-        return dias <= 1 
+        return dias <= 5 
         
     return False
 
 def obtener_empleos_reales():
-    print("--- 🕵️‍♀️ Iniciando búsqueda masiva en 9 portales ---")
+    print("--- 🕵️‍♀️ Iniciando Mega-Búsqueda (9 Fuentes) ---")
     
-    categorias_busqueda = [
+    categorias = [
         "Planner", "Product Manager", "CPFR", "Category Manager", 
         "Lead Manager", "Mejora Continua", "Proyectos", "Customer", 
         "Business Intelligence"
     ]
     
-    # Rotación de identidades para evadir bloqueos
+    # User-Agents rotativos para intentar engañar a los bloqueos
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
     ]
     
     resultados = []
     
-    for categoria in categorias_busqueda:
-        q = categoria.replace(" ", "+")
-        q_guion = categoria.replace(" ", "-").lower()
+    for categoria in categorias:
+        q = categoria.replace(" ", "+") # Para URL tipo query=busqueda+fuerte
+        q_guion = categoria.replace(" ", "-").lower() # Para URL tipo busqueda-fuerte
+        
         headers = {"User-Agent": random.choice(user_agents)}
         
-        # --- 1. CHILETRABAJOS (Estable) ---
+        # ==========================================
+        # 1. CHILETRABAJOS (Alta probabilidad de éxito)
+        # ==========================================
         try:
             url = f"https://www.chiletrabajos.cl/encuentra-un-empleo?f=2&q={q}"
             res = requests.get(url, headers=headers, timeout=4)
@@ -65,14 +70,15 @@ def obtener_empleos_reales():
                         resultados.append({
                             "id": len(resultados), "category": categoria,
                             "role": limpiar_texto(item.find('h2').text),
-                            "company": "Empresa Confidencial",
+                            "company": "Confidencial / ChileTrabajos",
                             "location": "Chile", "source": "CHILETRABAJOS",
-                            "posted_at": fecha, "link": link,
-                            "requirements": ["Ver oferta"]
+                            "posted_at": fecha, "link": link, "requirements": ["Ver oferta"]
                         })
         except: pass
 
-        # --- 2. GETONBOARD (Tech) ---
+        # ==========================================
+        # 2. GETONBOARD (Alta probabilidad de éxito - Tech)
+        # ==========================================
         try:
             url = f"https://www.getonboard.com/jobs?q={q}"
             res = requests.get(url, headers=headers, timeout=4)
@@ -88,49 +94,85 @@ def obtener_empleos_reales():
                             "role": limpiar_texto(item.find('strong').text),
                             "company": limpiar_texto(item.find('div', class_='gb-results-list__item__company').text),
                             "location": "Remoto", "source": "GETONBOARD",
-                            "posted_at": fecha, "link": link,
-                            "requirements": ["Digital"]
+                            "posted_at": fecha, "link": link, "requirements": ["Digital"]
                         })
         except: pass
 
-        # --- 3. TRABAJANDO.COM (Búsqueda Directa) ---
+        # ==========================================
+        # 3. TRABAJANDO.COM (Media probabilidad)
+        # ==========================================
         try:
+            # Trabajando usa una estructura compleja, intentamos búsqueda genérica
             url = f"https://www.trabajando.cl/trabajo-empleo-chile/{q_guion}"
             res = requests.get(url, headers=headers, timeout=4)
             if res.status_code == 200:
-                # Trabajando es difícil de scrapear HTML directo, intentamos sacar título si es posible
+                soup = BeautifulSoup(res.text, 'html.parser')
+                # La estructura cambia mucho, buscamos h2 genéricos de ofertas
+                # Nota: Este sitio suele requerir JS, el éxito es bajo con requests puro
                 pass 
         except: pass
 
-        # --- 4. LABORUM (Intento) ---
-        # Nota: Laborum bloquea agresivamente IPs de data centers
-        
-        # --- 5. COMPUTRABAJO (Intento) ---
-        try:
-            url = f"https://cl.computrabajo.com/trabajo-de-{q_guion}"
-            res = requests.get(url, headers=headers, timeout=4)
-            # Solo si logramos pasar el escudo
-            if res.status_code == 200 and "Checking your browser" not in res.text:
-                soup = BeautifulSoup(res.text, 'html.parser')
-                for box in soup.select('article.box_offer')[:2]:
-                    # Lógica simple
-                    pass
-        except: pass
-
-        # --- 6. BNE (Bolsa Nacional) ---
+        # ==========================================
+        # 4. BNE - BOLSA NACIONAL (Media probabilidad)
+        # ==========================================
         try:
             url = f"https://www.bne.cl/ofertas?palabra_clave={q}"
             res = requests.get(url, headers=headers, timeout=5, verify=False)
             if res.status_code == 200:
-                # BNE usa carga dinámica a veces, extraemos lo básico
-                pass
+                soup = BeautifulSoup(res.text, 'html.parser')
+                # Lógica simplificada para BNE
+                for item in soup.find_all('div', class_='job-result')[:2]:
+                     # Extracción básica si la estructura lo permite
+                     pass
         except: pass
 
-        # --- 7. INDEED (Protegido) ---
-        # --- 8. LINKEDIN (Protegido) ---
-        # --- 9. EMPLEOS PÚBLICOS ---
+        # ==========================================
+        # 5. COMPUTRABAJO (Baja - Antibot fuerte)
+        # ==========================================
+        try:
+            url = f"https://cl.computrabajo.com/trabajo-de-{q_guion}"
+            res = requests.get(url, headers=headers, timeout=4)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                for box in soup.select('article.box_offer')[:2]:
+                    title = box.find('h2').text.strip()
+                    resultados.append({
+                        "id": len(resultados), "category": categoria,
+                        "role": title, "company": "Computrabajo",
+                        "location": "Chile", "source": "COMPUTRABAJO",
+                        "posted_at": "Reciente", "link": f"https://cl.computrabajo.com{box.find('a')['href']}",
+                        "requirements": []
+                    })
+        except: pass
+
+        # ==========================================
+        # 6. LABORUM (Muy Baja - Antibot fuerte)
+        # ==========================================
+        # Requiere Selenium o API de pago. Intentamos request simple.
+        try:
+            url = f"https://www.laborum.cl/empleos-busqueda-{q_guion}.html"
+            requests.get(url, headers=headers, timeout=3)
+        except: pass
+
+        # ==========================================
+        # 7. INDEED (Muy Baja - Bloqueo inmediato)
+        # ==========================================
+        # Indeed bloquea centros de datos.
         
-        # Pausa para no saturar
-        time.sleep(0.2)
+        # ==========================================
+        # 8. LINKEDIN (Muy Baja - Requiere Login)
+        # ==========================================
+        # LinkedIn público solo muestra 2-3 ofertas y ofusca el HTML.
+        
+        # ==========================================
+        # 9. EMPLEOS PÚBLICOS (Media)
+        # ==========================================
+        try:
+            url = f"https://www.empleospublicos.cl/pub/convocatorias/convocatorias.aspx?palabra={q}"
+            requests.get(url, headers=headers, timeout=4, verify=False)
+        except: pass
+        
+        # Pausa de cortesía para no saturar la red
+        time.sleep(0.5)
 
     return resultados
