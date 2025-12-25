@@ -1,4 +1,22 @@
-git add .
-git commit -m "Correccion de error de sintaxis y robot 9x9"
-git push origin main
-3.  **Espera a Render:** Debería desplegarse correctamente esta vez.
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from scraper import obtener_empleos_reales
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def home():
+    return {"status": "Robot de 9 Categorias Activo"}
+
+@app.get("/jobs")
+def get_jobs():
+    datos = obtener_empleos_reales()
+    return datos
