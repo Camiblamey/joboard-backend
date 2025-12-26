@@ -1,4 +1,11 @@
-fastapi
-uvicorn
-requests
-beautifulsoup4
+attrs==25.4.0
+cattrs==25.3.0
+certifi==2025.11.12
+charset-normalizer==3.4.4
+idna==3.11
+platformdirs==4.5.1
+requests==2.32.5
+requests-cache==1.2.1
+typing_extensions==4.15.0
+url-normalize==2.2.1
+urllib3==2.6.2
